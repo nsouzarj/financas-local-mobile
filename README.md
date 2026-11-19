@@ -19,6 +19,10 @@ Aplicativo móvel completo do sistema financeiro, construído em **Flutter** e i
    - Criação de receitas e despesas.
    - Dropdowns com contas e categorias filtradas dinamicamente.
    - Seletor nativo de data e valor em R$.
+4. **Planejamento Futuro & Cópia com Dias Úteis (`SettlePlannedDialog` & `PlanningScreen`):**
+   - Baixa de contas com edição de valor, data e opção de pagamento parcial jogando a diferença para o próximo mês.
+   - Cópia individual e em lote de previsões para o próximo mês com ajuste automático de finais de semana (sábado/domingo) para o próximo dia útil (segunda-feira).
+   - Sincronização reativa global (`DataRefreshController`) entre todas as abas.
 
 ---
 

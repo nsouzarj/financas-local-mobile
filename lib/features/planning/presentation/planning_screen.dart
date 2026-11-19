@@ -23,6 +23,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
   DateTime _selectedDate = DateTime.now();
   bool _isAllPeriod = false;
   bool _isLoading = true;
+  bool _isCopying = false;
   String? _error;
   List<TransactionModel> _plannedTransactions = [];
 
@@ -160,6 +161,86 @@ class _PlanningScreenState extends State<PlanningScreen> {
     }
   }
 
+  Future<void> _copySingleToNextMonth(TransactionModel tx) async {
+    if (_isCopying) return;
+    setState(() => _isCopying = true);
+    try {
+      final newDate = await _planningService.copyToNextMonth(tx);
+      if (!mounted) return;
+      if (newDate != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '"${tx.description}" copiado para ${CurrencyFormatter.formatDate(newDate)} (dia útil)!',
+            ),
+            backgroundColor: AppTheme.income,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Não foi possível copiar a previsão.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao copiar previsão para o próximo mês.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isCopying = false);
+    }
+  }
+
+  Future<void> _copyAllToNextMonth() async {
+    if (_isCopying || _plannedTransactions.isEmpty) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text('Copiar Mês p/ Próximo?', style: TextStyle(color: AppTheme.textPrimary)),
+        content: Text(
+          'Deseja copiar todas as ${_plannedTransactions.length} previsão(ões) listadas para o próximo mês?\n\nDatas que caírem em sábado ou domingo serão ajustadas automaticamente para segunda-feira (dia útil).',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancelar', style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Copiar Tudo', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isCopying = true);
+    try {
+      final count = await _planningService.copyBatchToNextMonth(_plannedTransactions);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$count previsão(ões) copiada(s) para o próximo mês (em dias úteis)!'),
+          backgroundColor: AppTheme.income,
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao copiar previsões em lote.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isCopying = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -180,9 +261,22 @@ class _PlanningScreenState extends State<PlanningScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Planejamento Futuro'),
+            title: const Text('Planejamento Futuro', overflow: TextOverflow.ellipsis),
             actions: [
               const EyeVisibilityButton(),
+              IconButton(
+                icon: Icon(
+                  Icons.copy_all_rounded,
+                  color: _plannedTransactions.isEmpty || _isCopying
+                      ? AppTheme.textMuted
+                      : AppTheme.primary,
+                  size: 22,
+                ),
+                tooltip: 'Copiar previsões para o próximo mês (dias úteis)',
+                onPressed: (_plannedTransactions.isEmpty || _isCopying)
+                    ? null
+                    : _copyAllToNextMonth,
+              ),
               IconButton(
                 icon: Icon(
                   Icons.all_inclusive,
@@ -641,7 +735,21 @@ class _PlanningScreenState extends State<PlanningScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 5),
+                      // Botão Duplicar p/ Próximo Mês (Dia Útil)
+                      Material(
+                        color: AppTheme.primary.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        child: InkWell(
+                          onTap: _isCopying ? null : () => _copySingleToNextMonth(tx),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.all(6),
+                            child: Icon(Icons.copy_rounded, color: AppTheme.primary, size: 15),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 5),
                       // Botão Editar
                       Material(
                         color: AppTheme.surfaceLight.withOpacity(0.6),

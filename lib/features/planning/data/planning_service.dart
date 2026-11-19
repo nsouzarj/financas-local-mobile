@@ -266,4 +266,66 @@ class PlanningService {
     DataRefreshController.instance.notify();
     return true;
   }
+
+  /// Calcula a data equivalente no próximo mês ajustando sábado/domingo para segunda-feira (dia útil).
+  static DateTime calculateNextMonthBusinessDate(DateTime source) {
+    final nextMonth = source.month == 12 ? 1 : source.month + 1;
+    final nextYear = source.month == 12 ? source.year + 1 : source.year;
+    final maxDays = DateTime(nextYear, nextMonth + 1, 0).day;
+    final targetDay = source.day > maxDays ? maxDays : source.day;
+    var target = DateTime(nextYear, nextMonth, targetDay);
+
+    if (target.weekday == DateTime.saturday) {
+      target = target.add(const Duration(days: 2));
+    } else if (target.weekday == DateTime.sunday) {
+      target = target.add(const Duration(days: 1));
+    }
+    return target;
+  }
+
+  Future<DateTime?> copyToNextMonth(TransactionModel tx) async {
+    final targetDate = calculateNextMonthBusinessDate(tx.dueDate ?? tx.date);
+    final ok = await createPlannedTransaction(
+      description: tx.description,
+      amount: tx.amount,
+      type: tx.type,
+      dueDate: targetDate,
+      accountId: tx.accountId ?? '',
+      categoryId: tx.categoryId ?? '',
+      reminderDays: tx.reminderDays ?? 7,
+    );
+    return ok ? targetDate : null;
+  }
+
+  Future<int> copyBatchToNextMonth(List<TransactionModel> items) async {
+    if (items.isEmpty) return 0;
+    final db = await _dbHelper.database;
+    final baseMicros = DateTime.now().microsecondsSinceEpoch;
+    int copied = 0;
+
+    await db.transaction((txn) async {
+      for (int i = 0; i < items.length; i++) {
+        final tx = items[i];
+        final targetDate = calculateNextMonthBusinessDate(tx.dueDate ?? tx.date);
+        final dateStr = CurrencyFormatter.formatDateToApi(targetDate);
+
+        await txn.insert('financial_forecasts', {
+          'id': 'plan_${baseMicros}_$i',
+          'description': tx.description,
+          'amount': tx.amount,
+          'type': tx.type,
+          'due_date': dateStr,
+          'status': 'pending',
+          'account_id': (tx.accountId != null && tx.accountId!.isNotEmpty) ? tx.accountId : null,
+          'category_id': (tx.categoryId != null && tx.categoryId!.isNotEmpty) ? tx.categoryId : null,
+          'reminder_days': tx.reminderDays ?? 7,
+          'user_id': 'local_user_default',
+        });
+        copied++;
+      }
+    });
+
+    DataRefreshController.instance.notify();
+    return copied;
+  }
 }
